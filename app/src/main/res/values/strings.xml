@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Call Protection</string>
+    <string name="start_screenshot">Start Screenshot</string>
+    <string name="accessibility_service_description">Accessibility service for monitoring calls</string>
+</resources>
