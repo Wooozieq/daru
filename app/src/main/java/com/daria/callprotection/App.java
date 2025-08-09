@@ -2,8 +2,8 @@ package com.daria.callprotection;
 
 import android.app.Application;
 import android.content.Context;
-import android.os.StrictMode;
 import android.os.Build;
+import android.os.StrictMode;
 
 public class App extends Application {
     private static Context context;
@@ -12,7 +12,8 @@ public class App extends Application {
     public void onCreate() {
         super.onCreate();
         context = getApplicationContext();
-        // StrictMode for debug builds to catch accidental main-thread IO
+
+        // StrictMode only in DEBUG builds
         if (BuildConfig.DEBUG) {
             StrictMode.setThreadPolicy(new StrictMode.ThreadPolicy.Builder()
                     .detectAll()
