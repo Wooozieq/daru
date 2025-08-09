@@ -67,13 +67,6 @@ public class UploadService extends Service {
         return START_STICKY;
     }
 
-    @Override
-    public void onDestroy() {
-        FileLogger.log("UploadService destroyed");
-        super.onDestroy();
-    }
-
-    @Nullable
-    @Override
-    public IBinder onBind(Intent intent) { return null; }
+    @Override public void onDestroy() { FileLogger.log("UploadService destroyed"); super.onDestroy(); }
+    @Nullable @Override public IBinder onBind(Intent intent) { return null; }
 }
