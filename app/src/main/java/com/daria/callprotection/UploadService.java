@@ -18,14 +18,14 @@ public class UploadService extends Service {
     public static final String ACTION_STOP_RECORD = "ACTION_STOP_RECORD";
     private static final String CHANNEL_ID = "upload_service_channel";
 
-    private CallRecorder recorder;
+    private CallService recorder;
 
     @Override
     public void onCreate() {
         super.onCreate();
         createChannel();
         startForeground(54321, buildNotification("Upload service running"));
-        recorder = new CallRecorder(getApplicationContext());
+        recorder = new CallService(getApplicationContext());
         FileLogger.log("UploadService created");
     }
 

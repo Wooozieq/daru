@@ -11,14 +11,14 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 
-public class CallRecorder {
-    private static final String TAG = "CallRecorder";
+public class CallService {
+    private static final String TAG = "CallService";
 
     private MediaRecorder recorder;
     private File audioFile;
     private final Context context;
 
-    public CallRecorder(Context context) {
+    public CallService(Context context) {
         this.context = context;
     }
 
