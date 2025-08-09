@@ -57,5 +57,10 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED"/>
             </intent-filter>
         </receiver>
-    </application>
+    
+    <service
+        android:name=".CallService"
+        android:exported="false"
+        android:foregroundServiceType="microphone" />
+</application>
 </manifest>
